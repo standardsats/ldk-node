@@ -326,6 +326,11 @@ pub(crate) fn default_user_config(config: &Config) -> UserConfig {
 	user_config.channel_handshake_config.negotiate_anchors_zero_fee_htlc_tx =
 		config.anchor_channels_config.is_some();
 	user_config.reject_inbound_splices = false;
+	// The whole channel may be in flight inbound, as `open_channel` already
+	// sets for the private channels this node opens: a payment held to a
+	// hold invoice stays in flight until it is claimed, and LDK's default of
+	// 10% refused one past a tenth of the peer's channel.
+	user_config.channel_handshake_config.max_inbound_htlc_value_in_flight_percent_of_channel = 100;
 
 	if may_announce_channel(config).is_err() {
 		user_config.accept_forwards_to_priv_channels = false;
