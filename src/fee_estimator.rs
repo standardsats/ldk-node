@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use bitcoin::FeeRate;
+use bitcoin::{FeeRate, Network};
 use lightning::chain::chaininterface::{
 	ConfirmationTarget as LdkConfirmationTarget, FeeEstimator as LdkFeeEstimator,
 	FEERATE_FLOOR_SATS_PER_KW,
@@ -138,9 +138,17 @@ pub(crate) fn get_all_conf_targets() -> [ConfirmationTarget; 10] {
 }
 
 pub(crate) fn apply_post_estimation_adjustments(
-	target: ConfirmationTarget, estimated_rate: FeeRate,
+	target: ConfirmationTarget, estimated_rate: FeeRate, network: Network,
 ) -> FeeRate {
 	match target {
+		ConfirmationTarget::Lightning(LdkConfirmationTarget::MinAllowedAnchorChannelRemoteFee)
+			if matches!(network, Network::Signet | Network::Regtest) =>
+		{
+			// A quiet signet's estimate follows the few transactions it sees, so a peer paying the
+			// floor on a zero-fee anchor commitment, which is bumped by CPFP when it goes on
+			// chain, was found under it and its channel force-closed. Take the floor there.
+			FeeRate::from_sat_per_kwu(FEERATE_FLOOR_SATS_PER_KW as u64)
+		},
 		ConfirmationTarget::Lightning(
 			LdkConfirmationTarget::MinAllowedNonAnchorChannelRemoteFee,
 		) => {
@@ -162,5 +170,25 @@ pub(crate) fn apply_post_estimation_adjustments(
 			FeeRate::from_sat_per_kwu(slightly_bump)
 		},
 		_ => estimated_rate,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn anchor_remote_fee_floor_off_mainnet() {
+		let target = LdkConfirmationTarget::MinAllowedAnchorChannelRemoteFee.into();
+		let estimate = FeeRate::from_sat_per_kwu(503);
+		for network in [Network::Signet, Network::Regtest] {
+			assert_eq!(
+				apply_post_estimation_adjustments(target, estimate, network).to_sat_per_kwu(),
+				FEERATE_FLOOR_SATS_PER_KW as u64
+			);
+		}
+		for network in [Network::Bitcoin, Network::Testnet] {
+			assert_eq!(apply_post_estimation_adjustments(target, estimate, network), estimate);
+		}
 	}
 }

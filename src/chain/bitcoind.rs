@@ -559,7 +559,7 @@ impl BitcoindChainSource {
 
 			// LDK 0.0.118 introduced changes to the `ConfirmationTarget` semantics that
 			// require some post-estimation adjustments to the fee rates, which we do here.
-			let adjusted_fee_rate = apply_post_estimation_adjustments(target, fee_rate);
+			let adjusted_fee_rate = apply_post_estimation_adjustments(target, fee_rate, self.config.network);
 
 			new_fee_rate_cache.insert(target, adjusted_fee_rate);
 
